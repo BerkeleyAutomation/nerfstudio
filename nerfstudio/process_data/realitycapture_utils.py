@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,17 +17,19 @@
 import csv
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 import numpy as np
 from PIL import Image
+from rich.console import Console
 
 from nerfstudio.process_data.process_data_utils import CAMERA_MODELS
-from nerfstudio.utils.rich_utils import CONSOLE
+
+CONSOLE = Console(width=120)
 
 
 def realitycapture_to_json(
-    image_filename_map: Dict[str, Path],
+    image_filename_map: List[Path],
     csv_filename: Path,
     output_dir: Path,
     verbose: bool = False,

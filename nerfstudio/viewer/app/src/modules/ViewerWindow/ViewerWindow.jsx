@@ -149,14 +149,33 @@ export default function ViewerWindow(props) {
     renderer.setSize(viewportWidth, viewportHeight);
     labelRenderer.setSize(viewportWidth, viewportHeight);
   };
+  const throttledClickSender = makeThrottledMessageSender(
+    viser_websocket,
+    10,
+  );
+  const onMouseDown = (event) => {
+    const BANNER_HEIGHT = 50;
+    const x = event.clientX / viewport_width;
+    const y = (event.clientY - BANNER_HEIGHT) / viewport_height;
+    if (x < 0 || x > 1 || y < 0 || y > 1) {
+      return;
+    }
+    console.log("seding msg");
+    throttledClickSender({
+      type: 'ClickMessage',
+      x: x,
+      y: y,
+    });
+  };
+  window.addEventListener('dblclick', onMouseDown, false);
+  const clock = new THREE.Clock();
 
   const render = () => {
-    const fps = 24;
-    const interval = 1000 / fps;
+    const delta = clock.getDelta();
     handleResize();
     sceneTree.metadata.camera.updateProjectionMatrix();
     sceneTree.metadata.moveCamera();
-    sceneTree.metadata.camera_controls.update(interval);
+    sceneTree.metadata.camera_controls.update(delta);
     requestAnimationFrame(render);
     renderer.render(scene, sceneTree.metadata.camera);
     labelRenderer.render(scene, sceneTree.metadata.camera);
@@ -191,7 +210,7 @@ export default function ViewerWindow(props) {
         const oldBackground = scene.background;
         const texture = new THREE.Texture(this);
         texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.NearestFilter;
+        texture.magFilter = THREE.LinearFilter;
         texture.needsUpdate = true;
         scene.background = texture;
         if (oldBackground) {

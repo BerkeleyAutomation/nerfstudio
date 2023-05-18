@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,21 +26,16 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 import wandb
-from jaxtyping import Float
-from torch import Tensor
+from rich.console import Console
 from torch.utils.tensorboard import SummaryWriter
+from torchtyping import TensorType
 
 from nerfstudio.configs import base_config as cfg
 from nerfstudio.utils.decorators import check_main_thread, decorate_all
 from nerfstudio.utils.printing import human_format
-from nerfstudio.utils.rich_utils import CONSOLE
 
-
-def to8b(x):
-    """Converts a torch tensor to 8 bit"""
-    return (255 * torch.clamp(x, min=0, max=1)).to(torch.uint8)
-
-
+CONSOLE = Console(width=120)
+to8b = lambda x: (255 * torch.clamp(x, min=0, max=1)).to(torch.uint8)
 EVENT_WRITERS = []
 EVENT_STORAGE = []
 GLOBAL_BUFFER = {}
@@ -69,7 +64,7 @@ class EventType(enum.Enum):
 
 
 @check_main_thread
-def put_image(name, image: Float[Tensor, "H W C"], step: int):
+def put_image(name, image: TensorType["H", "W", "C"], step: int):
     """Setter function to place images into the queue to be written out
 
     Args:
@@ -192,22 +187,10 @@ def setup_local_writer(config: cfg.LoggingConfig, max_iter: int, banner_messages
     GLOBAL_BUFFER["events"] = {}
 
 
-def is_initialized():
-    """
-    Returns True after setup_local_writer was called
-    """
-    return "events" in GLOBAL_BUFFER
-
-
 @check_main_thread
-def setup_event_writer(
-    is_wandb_enabled: bool,
-    is_tensorboard_enabled: bool,
-    log_dir: Path,
-    experiment_name: str,
-    project_name: str = "nerfstudio-project",
-) -> None:
+def setup_event_writer(is_wandb_enabled: bool, is_tensorboard_enabled: bool, log_dir: Path) -> None:
     """Initialization of all event writers specified in config
+
     Args:
         config: configuration to instantiate loggers
         max_iter: maximum number of train iterations
@@ -215,7 +198,7 @@ def setup_event_writer(
     """
     using_event_writer = False
     if is_wandb_enabled:
-        curr_writer = WandbWriter(log_dir=log_dir, experiment_name=experiment_name, project_name=project_name)
+        curr_writer = WandbWriter(log_dir=log_dir)
         EVENT_WRITERS.append(curr_writer)
         using_event_writer = True
     if is_tensorboard_enabled:
@@ -233,7 +216,7 @@ class Writer:
     """Writer class"""
 
     @abstractmethod
-    def write_image(self, name: str, image: Float[Tensor, "H W C"], step: int) -> None:
+    def write_image(self, name: str, image: TensorType["H", "W", "C"], step: int) -> None:
         """method to write out image
 
         Args:
@@ -285,7 +268,7 @@ class TimeWriter:
     def __exit__(self, *args):
         self.duration = time() - self.start
         update_step = self.step is not None
-        if self.write and is_initialized():
+        if self.write:
             self.writer.put_time(
                 name=self.name,
                 duration=self.duration,
@@ -299,15 +282,15 @@ class TimeWriter:
 class WandbWriter(Writer):
     """WandDB Writer Class"""
 
-    def __init__(self, log_dir: Path, experiment_name: str, project_name: str = "nerfstudio-project"):
+    def __init__(self, log_dir: Path):
         wandb.init(
-            project=os.environ.get("WANDB_PROJECT", project_name),
+            project=os.environ.get("WANDB_PROJECT", "nerfstudio-project"),
             dir=os.environ.get("WANDB_DIR", str(log_dir)),
-            name=os.environ.get("WANDB_NAME", experiment_name),
+            name=os.environ.get("WANDB_NAME", log_dir.name),
             reinit=True,
         )
 
-    def write_image(self, name: str, image: Float[Tensor, "H W C"], step: int) -> None:
+    def write_image(self, name: str, image: TensorType["H", "W", "C"], step: int) -> None:
         image = torch.permute(image, (2, 0, 1))
         wandb.log({name: wandb.Image(image)}, step=step)
 
@@ -315,6 +298,8 @@ class WandbWriter(Writer):
         wandb.log({name: scalar}, step=step)
 
     def write_config(self, name: str, config_dict: Dict[str, Any], step: int):
+        # pylint: disable=unused-argument
+        # pylint: disable=no-self-use
         """Function that writes out the config to wandb
 
         Args:
@@ -330,14 +315,14 @@ class TensorboardWriter(Writer):
     def __init__(self, log_dir: Path):
         self.tb_writer = SummaryWriter(log_dir=log_dir)
 
-    def write_image(self, name: str, image: Float[Tensor, "H W C"], step: int) -> None:
+    def write_image(self, name: str, image: TensorType["H", "W", "C"], step: int) -> None:
         image = to8b(image)
         self.tb_writer.add_image(name, image, step, dataformats="HWC")
 
     def write_scalar(self, name: str, scalar: Union[float, torch.Tensor], step: int) -> None:
         self.tb_writer.add_scalar(name, scalar, step)
 
-    def write_config(self, name: str, config_dict: Dict[str, Any], step: int):
+    def write_config(self, name: str, config_dict: Dict[str, Any], step: int):  # pylint: disable=unused-argument
         """Function that writes out the config to tensorboard
 
         Args:

@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,10 +21,14 @@ import concurrent.futures
 import multiprocessing
 import random
 from abc import abstractmethod
-from typing import Any, Callable, Dict, Optional, Sized, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
+
+#For testing
+from matplotlib import pyplot as plt
+from tqdm import tqdm
 
 import torch
-from rich.progress import track
+from rich.progress import Console, track
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 
@@ -33,7 +37,8 @@ from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.data.datasets.base_dataset import InputDataset
 from nerfstudio.data.utils.nerfstudio_collate import nerfstudio_collate
 from nerfstudio.utils.misc import get_dict_to_torch
-from nerfstudio.utils.rich_utils import CONSOLE
+
+CONSOLE = Console(width=120)
 
 
 class CacheDataloader(DataLoader):
@@ -54,12 +59,10 @@ class CacheDataloader(DataLoader):
         num_images_to_sample_from: int = -1,
         num_times_to_repeat_images: int = -1,
         device: Union[torch.device, str] = "cpu",
-        collate_fn: Callable[[Any], Any] = nerfstudio_collate,
+        collate_fn=nerfstudio_collate,
         **kwargs,
     ):
         self.dataset = dataset
-        assert isinstance(self.dataset, Sized)
-
         super().__init__(dataset=dataset, **kwargs)  # This will set self.dataset
         self.num_times_to_repeat_images = num_times_to_repeat_images
         self.cache_all_images = (num_images_to_sample_from == -1) or (num_images_to_sample_from >= len(self.dataset))
@@ -70,6 +73,47 @@ class CacheDataloader(DataLoader):
 
         self.num_repeated = self.num_times_to_repeat_images  # starting value
         self.first_time = True
+
+        # self.generate_depths = True
+        # self.depth_batch = []
+        # self.model_type = "DPT_Hybrid"
+        # self.midas = torch.hub.load("intel-isl/MiDaS", self.model_type)
+        # self.midas.to(self.device)
+        # self.midas.eval()
+        # self.midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms").dpt_transform
+
+        # for i in track(range(len(self.dataset)), description="Generating depth batch"):
+        #     img = self.dataset.get_numpy_image(i)
+        #     input_batch = self.midas_transforms(img).to(self.device)
+        #     with torch.no_grad():
+        #         prediction = self.midas(input_batch)
+
+        #         prediction = torch.nn.functional.interpolate(
+        #             prediction.unsqueeze(1),
+        #             size=img.shape[:2],
+        #             mode="bicubic",
+        #             align_corners=False,
+        #         ).squeeze()
+            
+        #     self.depth_batch.append(prediction)
+
+        self.depth_batch = []
+        repo = "isl-org/ZoeDepth"
+        self.model_zoe_nk = torch.hub.load(repo, "ZoeD_NK", pretrained=True)
+        self.zoe = self.model_zoe_nk.to(self.device)
+
+        for i in track(range(len(self.dataset)), description="Generating depth batch"):
+            # img = self.dataset.get_image(i)
+            # img = torch.permute(img, (2, 0, 1)).unsqueeze(0).to(self.device)
+            # depth_numpy = self.zoe.infer(img).squeeze()
+            
+            img = self.dataset.get_numpy_image(i)
+            depth_numpy = self.zoe.infer_pil(img)  # as numpy
+            depth_numpy = torch.from_numpy(depth_numpy).to(self.device)
+
+            # output = depth_numpy.detach().cpu().squeeze().numpy()
+
+            self.depth_batch.append(depth_numpy)
 
         self.cached_collated_batch = None
         if self.cache_all_images:
@@ -95,10 +139,10 @@ class CacheDataloader(DataLoader):
     def _get_batch_list(self):
         """Returns a list of batches from the dataset attribute."""
 
-        assert isinstance(self.dataset, Sized)
         indices = random.sample(range(len(self.dataset)), k=self.num_images_to_sample_from)
         batch_list = []
         results = []
+        depth_res = []
 
         num_threads = int(self.num_workers) * 4
         num_threads = min(num_threads, multiprocessing.cpu_count() - 1)
@@ -111,15 +155,35 @@ class CacheDataloader(DataLoader):
 
             for res in track(results, description="Loading data batch", transient=True):
                 batch_list.append(res.result())
-
         return batch_list
 
     def _get_collated_batch(self):
         """Returns a collated batch."""
         batch_list = self._get_batch_list()
         collated_batch = self.collate_fn(batch_list)
+        collated_batch["depth"] = torch.stack(self.depth_batch)[..., None]
         collated_batch = get_dict_to_torch(collated_batch, device=self.device, exclude=["image"])
         return collated_batch
+    
+    def _get_depth(self, image_idx):
+        img = self.dataset.get_numpy_image(image_idx)
+        input_batch = self.midas_transforms(img).to(self.device)
+        with torch.no_grad():
+            prediction = self.midas(input_batch)
+
+            prediction = torch.nn.functional.interpolate(
+                prediction.unsqueeze(1),
+                size=img.shape[:2],
+                mode="bicubic",
+                align_corners=False,
+            ).squeeze()
+
+        output = prediction.cpu().numpy()
+
+        plt.imshow(output)
+        plt.savefig(f"depths/{image_idx}_depth.png")
+
+        return prediction
 
     def __iter__(self):
         while True:
@@ -186,7 +250,6 @@ class EvalDataloader(DataLoader):
         ray_bundle = self.cameras.generate_rays(camera_indices=image_idx, keep_shape=True)
         batch = self.input_dataset[image_idx]
         batch = get_dict_to_torch(batch, device=self.device, exclude=["image"])
-        assert isinstance(batch, dict)
         return ray_bundle, batch
 
 
@@ -228,16 +291,30 @@ class FixedIndicesEvalDataloader(EvalDataloader):
 
 class RandIndicesEvalDataloader(EvalDataloader):
     """Dataloader that returns random images.
+
     Args:
         input_dataset: InputDataset to load data from
         device: Device to load data to
     """
 
+    def __init__(
+        self,
+        input_dataset: InputDataset,
+        device: Union[torch.device, str] = "cpu",
+        **kwargs,
+    ):
+        super().__init__(input_dataset, device, **kwargs)
+        self.count = 0
+
     def __iter__(self):
+        self.count = 0
         return self
 
     def __next__(self):
-        # choose a random image index
-        image_idx = random.randint(0, len(self.cameras) - 1)
-        ray_bundle, batch = self.get_data_from_image_idx(image_idx)
-        return ray_bundle, batch
+        if self.count < 1:
+            image_indices = range(self.cameras.size)
+            image_idx = random.choice(image_indices)
+            ray_bundle, batch = self.get_data_from_image_idx(image_idx)
+            self.count += 1
+            return ray_bundle, batch
+        raise StopIteration

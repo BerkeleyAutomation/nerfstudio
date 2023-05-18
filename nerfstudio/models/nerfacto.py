@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ NeRF implementation that combines many recent advancements.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Tuple, Type
+from typing import Dict, List, Tuple, Type
 
 import numpy as np
 import torch
@@ -27,8 +27,9 @@ from torch.nn import Parameter
 from torchmetrics import PeakSignalNoiseRatio
 from torchmetrics.functional import structural_similarity_index_measure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+from typing_extensions import Literal
 
-from nerfstudio.cameras.rays import RayBundle, RaySamples
+from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.engine.callbacks import (
     TrainingCallback,
     TrainingCallbackAttributes,
@@ -44,7 +45,6 @@ from nerfstudio.model_components.losses import (
     interlevel_loss,
     orientation_loss,
     pred_normal_loss,
-    scale_gradients_by_distance_squared,
 )
 from nerfstudio.model_components.ray_samplers import (
     ProposalNetworkSampler,
@@ -128,8 +128,6 @@ class NerfactoModelConfig(ModelConfig):
     """Whether to predict normals or not."""
     disable_scene_contraction: bool = False
     """Whether to disable scene contraction or not."""
-    use_gradient_scaling: bool = False
-    """Use gradient scaler where the gradients are lower for points closer to the camera."""
 
 
 class NerfactoModel(Model):
@@ -187,12 +185,11 @@ class NerfactoModel(Model):
             self.density_fns.extend([network.density_fn for network in self.proposal_networks])
 
         # Samplers
-        def update_schedule(step):
-            return np.clip(
-                np.interp(step, [0, self.config.proposal_warmup], [0, self.config.proposal_update_every]),
-                1,
-                self.config.proposal_update_every,
-            )
+        update_schedule = lambda step: np.clip(
+            np.interp(step, [0, self.config.proposal_warmup], [0, self.config.proposal_update_every]),
+            1,
+            self.config.proposal_update_every,
+        )
 
         # Change proposal network initial sampler if uniform
         initial_sampler = None  # None is for piecewise as default (see ProposalNetworkSampler)
@@ -214,7 +211,8 @@ class NerfactoModel(Model):
         # renderers
         self.renderer_rgb = RGBRenderer(background_color=self.config.background_color)
         self.renderer_accumulation = AccumulationRenderer()
-        self.renderer_depth = DepthRenderer()
+        self.renderer_depth = DepthRenderer(method="expected")
+        self.renderer_depth_median = DepthRenderer()
         self.renderer_normals = NormalsRenderer()
 
         # shaders
@@ -245,10 +243,7 @@ class NerfactoModel(Model):
             def set_anneal(step):
                 # https://arxiv.org/pdf/2111.12077.pdf eq. 18
                 train_frac = np.clip(step / N, 0, 1)
-
-                def bias(x, b):
-                    return b * x / ((b - 1) * x + 1)
-
+                bias = lambda x, b: (b * x) / ((b - 1) * x + 1)
                 anneal = bias(train_frac, self.config.proposal_weights_anneal_slope)
                 self.proposal_sampler.set_anneal(anneal)
 
@@ -269,24 +264,22 @@ class NerfactoModel(Model):
         return callbacks
 
     def get_outputs(self, ray_bundle: RayBundle):
-        ray_samples: RaySamples
         ray_samples, weights_list, ray_samples_list = self.proposal_sampler(ray_bundle, density_fns=self.density_fns)
-        field_outputs = self.field.forward(ray_samples, compute_normals=self.config.predict_normals)
-        if self.config.use_gradient_scaling:
-            field_outputs = scale_gradients_by_distance_squared(field_outputs, ray_samples)
-
+        field_outputs = self.field(ray_samples, compute_normals=self.config.predict_normals)
         weights = ray_samples.get_weights(field_outputs[FieldHeadNames.DENSITY])
         weights_list.append(weights)
         ray_samples_list.append(ray_samples)
 
         rgb = self.renderer_rgb(rgb=field_outputs[FieldHeadNames.RGB], weights=weights)
         depth = self.renderer_depth(weights=weights, ray_samples=ray_samples)
+        depth_med = self.renderer_depth_median(weights=weights, ray_samples=ray_samples)
         accumulation = self.renderer_accumulation(weights=weights)
 
         outputs = {
             "rgb": rgb,
             "accumulation": accumulation,
             "depth": depth,
+            "depth_med": depth_med,
         }
 
         if self.config.predict_normals:
@@ -343,6 +336,14 @@ class NerfactoModel(Model):
                 loss_dict["pred_normal_loss"] = self.config.pred_normal_loss_mult * torch.mean(
                     outputs["rendered_pred_normal_loss"]
                 )
+
+            # depth rank loss
+            m = 1e-4
+            dpt_diff = batch["depth"][::2, :] - batch["depth"][1::2, :]
+            out_diff = outputs['depth'][::2, :] - outputs['depth'][1::2, :] + m
+            differing_signs = torch.sign(dpt_diff) != torch.sign(out_diff)
+            loss_dict["depth_rank_loss"] = .3*torch.mean((out_diff[differing_signs] * torch.sign(out_diff[differing_signs])))
+
         return loss_dict
 
     def get_image_metrics_and_images(

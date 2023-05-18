@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 import torch
 from equilib import Equi2Pers
+from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
@@ -31,7 +32,9 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from nerfstudio.utils.rich_utils import CONSOLE, ItersPerSecColumn
+from nerfstudio.utils.rich_utils import ItersPerSecColumn
+
+CONSOLE = Console(width=120)
 
 
 def _crop_bottom(bound_arr: list, fov: int, crop_factor: float) -> List[float]:
@@ -190,7 +193,6 @@ def generate_planar_projections_from_equirectangular(
                     v_rad = torch.pi * v_deg / 180.0
                     u_rad = torch.pi * u_deg / 180.0
                     pers_image = equi2pers(im, rots={"roll": 0, "pitch": v_rad, "yaw": u_rad}) * 255.0
-                    assert isinstance(pers_image, torch.Tensor)
                     pers_image = (pers_image.permute(1, 2, 0)).type(torch.uint8).to("cpu").numpy()
                     cv2.imwrite(f"{output_dir}/{i[:-4]}_{count}.jpg", pers_image)
                     count += 1

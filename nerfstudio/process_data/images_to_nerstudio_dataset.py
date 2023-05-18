@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,11 +17,14 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from rich.console import Console
+
 from nerfstudio.process_data import equirect_utils, process_data_utils
 from nerfstudio.process_data.colmap_converter_to_nerfstudio_dataset import (
     ColmapConverterToNerfstudioDataset,
 )
-from nerfstudio.utils.rich_utils import CONSOLE
+
+CONSOLE = Console(width=120)
 
 
 @dataclass
@@ -32,9 +35,10 @@ class ImagesToNerfstudioDataset(ColmapConverterToNerfstudioDataset):
     2. Calculates the camera poses for each image using `COLMAP <https://colmap.github.io/>`_.
     """
 
-    def main(self) -> None:
+    def main(self) -> None:  # pylint: disable=R0915
         """Process images into a nerfstudio dataset."""
 
+        # pylint: disable=too-many-statements
         require_cameras_exist = False
         if self.colmap_model_path != ColmapConverterToNerfstudioDataset.default_colmap_path():
             if not self.skip_colmap:
@@ -52,7 +56,6 @@ class ImagesToNerfstudioDataset(ColmapConverterToNerfstudioDataset):
             self.data = equirect_utils.generate_planar_projections_from_equirectangular(
                 self.data, pers_size, self.images_per_equirect, crop_factor=self.crop_factor
             )
-            self.camera_type = "perspective"
 
         summary_log = []
 

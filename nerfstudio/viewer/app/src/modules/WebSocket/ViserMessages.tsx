@@ -41,6 +41,13 @@ interface FilePathInfoMessage {
   data_base_dir: string;
   export_path_name: string;
 }
+interface SetCameraMessage {
+  type: "SetCameraMessage";
+  fov: number | null;
+  look_at: [number, number, number] | null;
+  position: [number, number, number] | null;
+  instant: boolean;
+}
 interface CameraMessage {
   type: "CameraMessage";
   aspect: number;
@@ -50,6 +57,11 @@ interface CameraMessage {
   camera_type: 'perspective' | 'fisheye' | 'equirectangular';
   is_moving: boolean;
   timestamp: number;
+}
+interface ClickMessage {
+  type: 'ClickMessage';
+  x: number;
+  y: number;
 }
 interface SceneBoxMessage {
   type: "SceneBoxMessage";
@@ -99,10 +111,6 @@ interface TimeConditionMessage {
   type: "TimeConditionMessage";
   time: number;
 }
-interface OutputOptionsMessage {
-  type: "OutputOptionsMessage";
-  options: any;
-}
 
 export type Message = 
   | BackgroundImageMessage
@@ -113,6 +121,7 @@ export type Message =
   | GuiSetValueMessage
   | GuiSetLevaConfMessage
   | FilePathInfoMessage
+  | SetCameraMessage
   | CameraMessage
   | SceneBoxMessage
   | DatasetImageMessage
@@ -125,4 +134,4 @@ export type Message =
   | SaveCheckpointMessage
   | UseTimeConditioningMessage
   | TimeConditionMessage
-  | OutputOptionsMessage;
+  | ClickMessage;

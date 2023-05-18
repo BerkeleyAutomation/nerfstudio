@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,19 +24,9 @@ import typing
 from collections import deque
 from contextlib import ContextDecorator, contextmanager
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    ContextManager,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    TypeVar,
-    Union,
-    overload,
-)
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
+from rich.console import Console
 from torch.profiler import ProfilerActivity, profile, record_function
 
 from nerfstudio.configs import base_config as cfg
@@ -46,38 +36,14 @@ from nerfstudio.utils.decorators import (
     check_profiler_enabled,
     decorate_all,
 )
-from nerfstudio.utils.rich_utils import CONSOLE
+
+CONSOLE = Console(width=120)
 
 PROFILER = []
 PYTORCH_PROFILER = None
 
 
-CallableT = TypeVar("CallableT", bound=Callable)
-
-
-@overload
-def time_function(name_or_func: CallableT) -> CallableT:
-    ...
-
-
-@overload
-def time_function(name_or_func: str) -> ContextManager[Any]:
-    ...
-
-
-def time_function(name_or_func: Union[CallableT, str]) -> Union[CallableT, ContextManager[Any]]:
-    """Profile a function or block of code. Can be used either to create a context or to wrap a function.
-
-    Args:
-        name_or_func: Either the name of a context or function to profile.
-
-    Returns:
-        A wrapped function or context to use in a `with` statement.
-    """
-    return _TimeFunction(name_or_func)
-
-
-class _TimeFunction(ContextDecorator):
+class time_function(ContextDecorator):  # pylint: disable=invalid-name
     """Decorator/Context manager: time a function call or a block of code"""
 
     def __init__(self, name: Union[str, Callable]):
@@ -105,7 +71,7 @@ class _TimeFunction(ContextDecorator):
             if self._function_call_args is not None:
                 args, kwargs = self._function_call_args
             ctx = PYTORCH_PROFILER.record_function(self.name, *args, **kwargs)
-            ctx.__enter__()
+            ctx.__enter__()  # pylint: disable=no-member
             self._profiler_contexts.append(ctx)
             if self._function_call_args is None:
                 ctx = record_function(self.name)
@@ -139,14 +105,14 @@ def flush_profiler(config: cfg.LoggingConfig):
 
 def setup_profiler(config: cfg.LoggingConfig, log_dir: Path):
     """Initialization of profilers"""
-    global PYTORCH_PROFILER
+    global PYTORCH_PROFILER  # pylint: disable=global-statement
     if comms.is_main_process():
         PROFILER.append(Profiler(config))
         if config.profiler == "pytorch":
             PYTORCH_PROFILER = PytorchProfiler(log_dir)
 
 
-class PytorchProfiler:
+class PytorchProfiler:  # pylint: disable=too-few-public-methods
     """
     Wrapper for Pytorch Profiler
     """

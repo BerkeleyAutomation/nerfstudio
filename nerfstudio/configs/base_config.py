@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,13 +14,16 @@
 
 """Base Configs"""
 
+# pylint: disable=wrong-import-position
 
 from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Literal, Optional, Tuple, Type
+from typing import Any, List, Optional, Tuple, Type
+
+from typing_extensions import Literal
 
 # model instances
 from nerfstudio.utils import writer
@@ -29,7 +32,7 @@ warnings.filterwarnings("ignore", module="torchvision")
 
 
 # Pretty printing class
-class PrintableConfig:
+class PrintableConfig:  # pylint: disable=too-few-public-methods
     """Printable Config defining str function"""
 
     def __str__(self):
@@ -47,7 +50,7 @@ class PrintableConfig:
 
 # Base instantiate configs
 @dataclass
-class InstantiateConfig(PrintableConfig):
+class InstantiateConfig(PrintableConfig):  # pylint: disable=too-few-public-methods
     """Config class for instantiating an the class specified in the _target attribute."""
 
     _target: Type

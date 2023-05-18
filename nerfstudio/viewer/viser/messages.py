@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Literal, Tuple
+from typing import Any, Tuple, Optional
 
 import viser.infra
-from typing_extensions import override
+from typing_extensions import Literal, override
 
 
 class NerfstudioMessage(viser.infra.Message):
@@ -122,6 +122,19 @@ class FilePathInfoMessage(NerfstudioMessage):
     """ Base directory for data files """
     export_path_name: str
     """ Name of the export folder """
+
+
+@dataclasses.dataclass
+class SetCameraMessage(NerfstudioMessage):
+    """Set the current camera."""
+
+    fov: Optional[float]
+    """ Field of view of the camera """
+    look_at: Optional[Tuple[float, float, float]]
+    """Point in 3D the camera is looking at"""
+    position: Optional[Tuple[float, float, float]]
+    """ Position of the camera"""
+    instant: bool = False
 
 
 @dataclasses.dataclass
@@ -242,12 +255,10 @@ class TimeConditionMessage(NerfstudioMessage):
     time: float
     """ Time conditioning value """
 
-
 @dataclasses.dataclass
-class OutputOptionsMessage(NerfstudioMessage):
-    """Output options message which are used in the export panel.
-    TODO: remove when export panel is becomes python defined.
-    """
+class ClickMessage(NerfstudioMessage):
+    """Click message."""
 
-    options: Any
-    """ List of output option strings"""
+    x: float
+    y: float
+    """ Index of the clicked image """

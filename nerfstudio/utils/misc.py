@@ -1,4 +1,4 @@
-# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,15 +17,12 @@ Miscellaneous helper code.
 """
 
 
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 
-T = TypeVar("T")
-TKey = TypeVar("TKey")
 
-
-def get_dict_to_torch(stuff: T, device: Union[torch.device, str] = "cpu", exclude: Optional[List[str]] = None) -> T:
+def get_dict_to_torch(stuff: Any, device: Union[torch.device, str] = "cpu", exclude: Optional[List[str]] = None):
     """Set everything in the dict to the specified torch device.
 
     Args:
@@ -45,7 +42,7 @@ def get_dict_to_torch(stuff: T, device: Union[torch.device, str] = "cpu", exclud
     return stuff
 
 
-def get_dict_to_cpu(stuff: T) -> T:
+def get_dict_to_cpu(stuff: Any):
     """Set everything in the dict to CPU.
 
     Args:
@@ -60,7 +57,7 @@ def get_dict_to_cpu(stuff: T) -> T:
     return stuff
 
 
-def get_masked_dict(d: Dict[TKey, torch.Tensor], mask) -> Dict[TKey, torch.Tensor]:
+def get_masked_dict(d, mask):
     """Return a masked dictionary.
     TODO(ethan): add more asserts/checks so this doesn't have unpredictable behavior.
 
@@ -74,7 +71,7 @@ def get_masked_dict(d: Dict[TKey, torch.Tensor], mask) -> Dict[TKey, torch.Tenso
     return masked_dict
 
 
-class IterableWrapper:
+class IterableWrapper:  # pylint: disable=too-few-public-methods
     """A helper that will allow an instance of a class to return multiple kinds of iterables bound
     to different functions of that class.
 

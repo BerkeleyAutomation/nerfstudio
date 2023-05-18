@@ -1,10 +1,11 @@
 import React, { useEffect, MutableRefObject, Dispatch } from 'react';
-
 import AwaitLock from 'await-lock';
 import { pack, unpack } from 'msgpackr';
 import { useDispatch, useStore, useSelector } from 'react-redux';
 import { Store } from 'redux';
 import { Message } from './ViserMessages';
+import SceneNode from '../../SceneNode';
+
 
 const ViserWebSocketContext =
   React.createContext<React.RefObject<WebSocket> | null>(null);
@@ -53,6 +54,7 @@ function handleMessage(
   message: Message,
   dispatch: Dispatch<any>,
   store: Store,
+  sceneTree: SceneNode
 ) {
   switch (message.type) {
     // Add a background image.
@@ -156,6 +158,36 @@ function handleMessage(
             },
           },
         });
+      }
+      break;
+    }
+    // Set camera position
+    case 'SetCameraMessage': {
+      if(message.fov !== null){
+        sceneTree.metadata.camera.fov = message.fov;
+      }
+      const instant=false;
+      if(message.instant){
+        instant = true;
+      }
+      if(message.look_at !==null && message.position !== null){
+        sceneTree.metadata.camera_controls.setLookAt(message.position[0],
+          message.position[1],
+          message.position[2],
+          message.look_at[0],
+          message.look_at[1],
+          message.look_at[2],
+          !instant);
+      }
+      else{
+        if(message.look_at !==null){
+          const p = message.look_at;
+          sceneTree.metadata.camera_controls.setTarget(p[0],p[1],p[2],!instant);
+        }
+        if(message.position !==null){
+          const p = message.position;
+          sceneTree.metadata.camera_controls.setPosition(p[0],p[1],p[2],!instant);
+        }
       }
       break;
     }
@@ -276,14 +308,6 @@ function handleMessage(
       });
       break;
     }
-    case 'OutputOptionsMessage': {
-      dispatch({
-        type: 'write',
-        path: 'renderingState/output_options',
-        data: message.options,
-      });
-      break;
-    }
     default: {
       console.log('Received message did not match any known types:', message);
       break;
@@ -291,7 +315,9 @@ function handleMessage(
   }
 }
 
-export function ViserWebSocket({ children }: { children: React.ReactNode }) {
+// export function ViserWebSocket({ children }: { children: React.ReactNode }) {
+export function ViserWebSocket(props) {
+  const sceneTree = props.sceneTree;
   const dispatch = useDispatch();
   const store = useStore();
 
@@ -352,7 +378,7 @@ export function ViserWebSocket({ children }: { children: React.ReactNode }) {
             new Uint8Array(await event.data.arrayBuffer()),
           )) as Message;
           await orderLock.acquireAsync({ timeout: 1000 });
-          handleMessage(message, dispatch, store);
+          handleMessage(message, dispatch, store,sceneTree);
         } catch (error) {
           console.error(`Error handling message: ${error}`);
         } finally {
@@ -381,7 +407,7 @@ export function ViserWebSocket({ children }: { children: React.ReactNode }) {
 
   return (
     <ViserWebSocketContext.Provider value={ws}>
-      {children}
+      {props.children}
     </ViserWebSocketContext.Provider>
   );
 }
