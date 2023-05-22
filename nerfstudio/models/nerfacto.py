@@ -214,7 +214,8 @@ class NerfactoModel(Model):
         # renderers
         self.renderer_rgb = RGBRenderer(background_color=self.config.background_color)
         self.renderer_accumulation = AccumulationRenderer()
-        self.renderer_depth = DepthRenderer()
+        self.renderer_depth = DepthRenderer(method="expected")
+        self.renderer_depth_median = DepthRenderer()
         self.renderer_normals = NormalsRenderer()
 
         # shaders
@@ -281,12 +282,14 @@ class NerfactoModel(Model):
 
         rgb = self.renderer_rgb(rgb=field_outputs[FieldHeadNames.RGB], weights=weights)
         depth = self.renderer_depth(weights=weights, ray_samples=ray_samples)
+        depth_med = self.renderer_depth_median(weights=weights, ray_samples=ray_samples)
         accumulation = self.renderer_accumulation(weights=weights)
 
         outputs = {
             "rgb": rgb,
             "accumulation": accumulation,
             "depth": depth,
+            "depth_med": depth_med,
         }
 
         if self.config.predict_normals:
@@ -343,6 +346,37 @@ class NerfactoModel(Model):
                 loss_dict["pred_normal_loss"] = self.config.pred_normal_loss_mult * torch.mean(
                     outputs["rendered_pred_normal_loss"]
                 )
+
+            # Pair depth rank loss
+            # m = 1e-4
+            # dpt_diff = batch["depth"][::2, :] - batch["depth"][1::2, :]
+            # out_diff = outputs['depth'][::2, :] - outputs['depth'][1::2, :] + m
+            # differing_signs = torch.sign(dpt_diff) != torch.sign(out_diff)
+            # loss_dict["depth_rank_loss"] = .3*torch.mean((out_diff[differing_signs] * torch.sign(out_diff[differing_signs])))
+            
+            # Depth Loss
+            k = batch["patch_size"]
+            r = ((k * k) // 2) * 2
+
+            depth_patches = batch["depth"].view(-1, (k * k))
+            out_patches = outputs["depth"].view(-1, (k * k))
+            
+            # Rank Loss
+            # Generate random column indices for each row
+            random_columns = torch.randint(low=0, high=k*k, size=(depth_patches.shape[0],r)).to(self.device)
+            # Gather the values from input_tensor using random_columns as indices
+            depth_patches = torch.gather(depth_patches, 1, random_columns).view(depth_patches.shape[0]*r)[..., None]
+            out_patches = torch.gather(out_patches, 1, random_columns).view(out_patches.shape[0]*r)[..., None]
+
+            m = 1e-4
+            dpt_diff = depth_patches[::2, :] - depth_patches[1::2, :]
+            out_diff = out_patches[::2, :] - out_patches[1::2, :] + m
+            differing_signs = torch.sign(dpt_diff) != torch.sign(out_diff)
+            loss_dict["depth_rank_loss"] = .3*torch.mean((out_diff[differing_signs] * torch.sign(out_diff[differing_signs])))
+
+            # Continuity Loss
+            loss_dict["continuity_loss"] = .3*torch.mean(torch.abs(outputs["depth"][:, :, :-1] - outputs["depth"][:, :, 1:]))
+
         return loss_dict
 
     def get_image_metrics_and_images(

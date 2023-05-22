@@ -53,6 +53,7 @@ from nerfstudio.data.pixel_samplers import (
     EquirectangularPixelSampler,
     PatchPixelSampler,
     PixelSampler,
+    PairPixelSampler,
 )
 from nerfstudio.data.utils.dataloaders import (
     CacheDataloader,
@@ -330,7 +331,7 @@ class VanillaDataManagerConfig(DataManagerConfig):
     """The scale factor for scaling spatial data such as images, mask, semantics
     along with relevant information about camera intrinsics
     """
-    patch_size: int = 1
+    patch_size: int = 2
     """Size of patch to sample from. If >1, patch-based sampling will be used."""
 
 
@@ -422,6 +423,7 @@ class VanillaDataManager(DataManager, Generic[TDataset]):
         """Infer pixel sampler to use."""
         if self.config.patch_size > 1:
             return PatchPixelSampler(*args, **kwargs, patch_size=self.config.patch_size)
+            # return PairPixelSampler(*args, **kwargs, radius=self.config.patch_size)
 
         # If all images are equirectangular, use equirectangular pixel sampler
         is_equirectangular = dataset.cameras.camera_type == CameraType.EQUIRECTANGULAR.value
