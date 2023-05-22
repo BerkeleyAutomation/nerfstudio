@@ -261,6 +261,14 @@ class TensorDataclass:
         """
         return self._apply_fn_to_fields(lambda x: x.to(device))
 
+    def detach(self:TensorDataclassT) -> TensorDataclassT:
+        """Returns a new TensorDataclass detached from the computation graph.
+
+        Returns:
+            A new TensorDataclass detached from the computation graph.
+        """
+        return self._apply_fn_to_fields(lambda x: x.detach())
+
     def _apply_fn_to_fields(
         self: TensorDataclassT,
         fn: Callable,
