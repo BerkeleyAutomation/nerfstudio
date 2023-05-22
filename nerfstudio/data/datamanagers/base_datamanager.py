@@ -53,6 +53,7 @@ from nerfstudio.data.pixel_samplers import (
     EquirectangularPixelSampler,
     PatchPixelSampler,
     PixelSampler,
+    PairPixelSampler,
 )
 from nerfstudio.data.utils.dataloaders import (
     CacheDataloader,
@@ -421,7 +422,8 @@ class VanillaDataManager(DataManager, Generic[TDataset]):
     def _get_pixel_sampler(self, dataset: TDataset, *args: Any, **kwargs: Any) -> PixelSampler:
         """Infer pixel sampler to use."""
         if self.config.patch_size > 1:
-            return PatchPixelSampler(*args, **kwargs, patch_size=self.config.patch_size)
+            # return PatchPixelSampler(*args, **kwargs, patch_size=self.config.patch_size)
+            return PairPixelSampler(*args, **kwargs, radius=self.config.patch_size)
 
         # If all images are equirectangular, use equirectangular pixel sampler
         is_equirectangular = dataset.cameras.camera_type == CameraType.EQUIRECTANGULAR.value

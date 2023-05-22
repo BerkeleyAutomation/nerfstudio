@@ -45,6 +45,7 @@ from nerfstudio.model_components.losses import (
     orientation_loss,
     pred_normal_loss,
     scale_gradients_by_distance_squared,
+    depth_ranking_loss,
 )
 from nerfstudio.model_components.ray_samplers import (
     ProposalNetworkSampler,
@@ -214,7 +215,8 @@ class NerfactoModel(Model):
         # renderers
         self.renderer_rgb = RGBRenderer(background_color=self.config.background_color)
         self.renderer_accumulation = AccumulationRenderer()
-        self.renderer_depth = DepthRenderer()
+        self.renderer_depth = DepthRenderer('expected')
+        self.renderer_depth_med = DepthRenderer()
         self.renderer_normals = NormalsRenderer()
 
         # shaders
@@ -281,12 +283,15 @@ class NerfactoModel(Model):
 
         rgb = self.renderer_rgb(rgb=field_outputs[FieldHeadNames.RGB], weights=weights)
         depth = self.renderer_depth(weights=weights, ray_samples=ray_samples)
+        with torch.no_grad():
+            depth_med = self.renderer_depth_med(weights=weights, ray_samples=ray_samples)
         accumulation = self.renderer_accumulation(weights=weights)
 
         outputs = {
             "rgb": rgb,
             "accumulation": accumulation,
             "depth": depth,
+            "depth_med": depth_med,
         }
 
         if self.config.predict_normals:
@@ -343,6 +348,7 @@ class NerfactoModel(Model):
                 loss_dict["pred_normal_loss"] = self.config.pred_normal_loss_mult * torch.mean(
                     outputs["rendered_pred_normal_loss"]
                 )
+            loss_dict['depth_ranking'] = .2*depth_ranking_loss(outputs['depth'],batch['depth'])
         return loss_dict
 
     def get_image_metrics_and_images(
