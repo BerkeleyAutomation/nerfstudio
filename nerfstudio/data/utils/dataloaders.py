@@ -71,47 +71,48 @@ class CacheDataloader(DataLoader):
         self.num_repeated = self.num_times_to_repeat_images  # starting value
         self.first_time = True
                 # self.generate_depths = True
-        self.depth_batch = []
-        #['DPTDepthModel', 'DPT_BEiT_B_384', 'DPT_BEiT_L_384', 'DPT_BEiT_L_512', 'DPT_Hybrid', 'DPT_Large', 'DPT_LeViT_224', 'DPT_Next_ViT_L_384', 'DPT_SwinV2_B_384', 'DPT_SwinV2_L_384', 'DPT_SwinV2_T_256', 'DPT_Swin_L_384', 'MiDaS', 'MiDaS_small', 'MidasNet', 'MidasNet_small', 'transforms']
-        self.model_type = "DPT_SwinV2_L_384"
-        self.midas = torch.hub.load("intel-isl/MiDaS", self.model_type)
-        self.midas.to(self.device)
-        self.midas.eval()
-        # self.midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms").beit512_transform
-        self.midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms").swin384_transform
-
-        for i in track(range(len(self.dataset)), description="Generating depth batch"):
-            img = self.dataset.get_numpy_image(i)
-            input_batch = self.midas_transforms(img).to(self.device)
-            with torch.no_grad():
-                prediction = self.midas(input_batch)
-
-                prediction = torch.nn.functional.interpolate(
-                    prediction.unsqueeze(1),
-                    size=img.shape[:2],
-                    mode="bicubic",
-                    align_corners=False,
-                ).squeeze()
-
-            self.depth_batch.append(prediction)
-
         # self.depth_batch = []
-        # repo = "isl-org/ZoeDepth"
-        # self.model_zoe_nk = torch.hub.load(repo, "ZoeD_NK", pretrained=True)
-        # self.zoe = self.model_zoe_nk.to(self.device)
+        # #['DPTDepthModel', 'DPT_BEiT_B_384', 'DPT_BEiT_L_384', 'DPT_BEiT_L_512', 'DPT_Hybrid', 'DPT_Large', 'DPT_LeViT_224', 'DPT_Next_ViT_L_384', 'DPT_SwinV2_B_384', 'DPT_SwinV2_L_384', 'DPT_SwinV2_T_256', 'DPT_Swin_L_384', 'MiDaS', 'MiDaS_small', 'MidasNet', 'MidasNet_small', 'transforms']
+        # self.model_type = "DPT_SwinV2_L_384"
+        # self.midas = torch.hub.load("intel-isl/MiDaS", self.model_type)
+        # self.midas.to(self.device)
+        # self.midas.eval()
+        # # self.midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms").beit512_transform
+        # self.midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms").swin384_transform
 
         # for i in track(range(len(self.dataset)), description="Generating depth batch"):
-        #     img = self.dataset.get_image(i)
-        #     img = torch.permute(img, (2, 0, 1)).unsqueeze(0).to(self.device)
-        #     depth_numpy = self.zoe.infer(img).squeeze()
+        #     img = self.dataset.get_numpy_image(i)
+        #     input_batch = self.midas_transforms(img).to(self.device)
+        #     with torch.no_grad():
+        #         prediction = self.midas(input_batch)
 
-        #     # img = self.dataset.get_numpy_image(i)
-        #     # depth_numpy = self.zoe.infer_pil(img)  # as numpy
-        #     # depth_numpy = torch.from_numpy(depth_numpy).to(self.device)
+        #         prediction = torch.nn.functional.interpolate(
+        #             prediction.unsqueeze(1),
+        #             size=img.shape[:2],
+        #             mode="bicubic",
+        #             align_corners=False,
+        #         ).squeeze()
 
-        #     # output = depth_numpy.detach().cpu().squeeze().numpy()
+        #     self.depth_batch.append(prediction)
 
-        #     self.depth_batch.append(depth_numpy)
+        self.depth_batch = []
+        repo = "isl-org/ZoeDepth"
+        self.model_zoe_nk = torch.hub.load(repo, "ZoeD_NK", pretrained=True)
+        self.zoe = self.model_zoe_nk.to(self.device)
+
+        for i in track(range(len(self.dataset)), description="Generating depth batch"):
+            with torch.no_grad():
+                img = self.dataset.get_image(i)
+                img = torch.permute(img, (2, 0, 1)).unsqueeze(0).to(self.device)
+                depth_numpy = self.zoe.infer(img).squeeze()
+
+            # img = self.dataset.get_numpy_image(i)
+            # depth_numpy = self.zoe.infer_pil(img)  # as numpy
+            # depth_numpy = torch.from_numpy(depth_numpy).to(self.device)
+
+            # output = depth_numpy.detach().cpu().squeeze().numpy()
+
+            self.depth_batch.append(depth_numpy)
 
         self.cached_collated_batch = None
         if self.cache_all_images:
