@@ -28,9 +28,11 @@ from rich.progress import track
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 
-#For testing
-from matplotlib import pyplot as plt
-from tqdm import tqdm
+import os.path as osp
+import os
+from pathlib import Path
+import numpy as np
+
 
 from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle
@@ -55,6 +57,8 @@ class CacheDataloader(DataLoader):
     def __init__(
         self,
         dataset: Dataset,
+        scene_name: str,
+        train: bool,
         num_images_to_sample_from: int = -1,
         num_times_to_repeat_images: int = -1,
         device: Union[torch.device, str] = "cpu",
@@ -74,8 +78,10 @@ class CacheDataloader(DataLoader):
 
         self.num_repeated = self.num_times_to_repeat_images  # starting value
         self.first_time = True
+        self.train = train
 
-        self.depth_batch = self._gen_depth_batch()
+        depths_cache_dir = f"outputs/{scene_name}"
+        self.depth_batch = self._gen_depth_batch(depths_cache_dir)
 
         self.cached_collated_batch = None
         if self.cache_all_images:
@@ -98,11 +104,12 @@ class CacheDataloader(DataLoader):
     def __getitem__(self, idx):
         return self.dataset.__getitem__(idx)
     
-    def _gen_depth_batch(self):
+    def _gen_depth_batch(self, cache_dir):
         # generate_depths = True
         # depth_batch = []
         # model_type = "DPT_Hybrid"
-        # midas = torch.hub.load("intel-isl/MiDaS", model_type)
+        # repo = "intel-isl/MiDaS"
+        # midas = torch.hub.load(repo, model_type)
         # midas.to(self.device)
         # midas.eval()
         # midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms").dpt_transform
@@ -124,9 +131,18 @@ class CacheDataloader(DataLoader):
 
         depth_batch = []
         repo = "isl-org/ZoeDepth"
-        model_zoe_nk = torch.hub.load(repo, "ZoeD_NK", pretrained=True)
+        model_type = "ZoeD_NK"
+        model_zoe_nk = torch.hub.load(repo, model_type, pretrained=True)
         zoe = model_zoe_nk.to(self.device)
+        train = "train" if self.train else "val"
 
+        depth_dir = Path(osp.join(cache_dir, f"{train}_{model_type}.npy"))
+        if depth_dir.exists():
+            CONSOLE.print(f"Loading {depth_dir}")
+            depth_batch = np.load(depth_dir)
+            depth_batch = [torch.as_tensor(depth).to(self.device) for depth in depth_batch]
+            return depth_batch
+        
         for i in track(range(len(self.dataset)), description="Generating depth batch"):
             with torch.no_grad():
                 img = self.dataset.get_image(i)
@@ -140,6 +156,12 @@ class CacheDataloader(DataLoader):
             # output = depth_numpy.detach().cpu().squeeze().numpy()
 
             depth_batch.append(depth_numpy)
+        
+        #Save depth batch to cache dir
+        CONSOLE.print(f"Saving {cache_dir}")
+        cache_depth = torch.stack(depth_batch).cpu()
+        np.save(depth_dir, cache_depth)
+
         return depth_batch
 
     def _get_batch_list(self):
