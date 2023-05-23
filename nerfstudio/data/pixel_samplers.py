@@ -332,7 +332,7 @@ class PairPixelSampler(PixelSampler):  # pylint: disable=too-few-public-methods
     def __init__(self, num_rays_per_batch: int, keep_full_image: bool = False, **kwargs) -> None:
         self.radius = kwargs["radius"]
         self.rays_to_sample = num_rays_per_batch // 2
-        self.knn_sampler = KNNPixelSampler(k=3, radius=self.radius)
+        self.knn_sampler = KNNPixelSampler(k=5, radius=self.radius)
         super().__init__(num_rays_per_batch, keep_full_image, **kwargs)
 
     # overrides base method
@@ -354,7 +354,11 @@ class PairPixelSampler(PixelSampler):  # pylint: disable=too-few-public-methods
         else:
             raise ValueError("image_batch['image'] must be a list or torch.Tensor")
         pixel_batch["patch_size"] = self.radius
+        # sampled_pixels, knn_neighbors = self.knn_sampler.sample(image_batch, pixel_batch["indices"])
+        # pixel_batch["sampled_pixels"] = sampled_pixels
+        # pixel_batch["knn_neighbors"] = knn_neighbors
         return pixel_batch
+        
 
     # overrides base method
     def sample_method(  # pylint: disable=no-self-use
@@ -371,9 +375,9 @@ class PairPixelSampler(PixelSampler):  # pylint: disable=too-few-public-methods
             indices = super().sample_method(batch_size, num_images, image_height, image_width, mask=mask, device=device)
         else:
             indices = torch.rand((self.rays_to_sample, 3), device=device) * torch.tensor(
-                [num_images, image_height - self.radius, image_width - self.radius],
+                [num_images, image_height - (self.radius*2), image_width - (self.radius*2)],
                 device=device,
-            )
+            ) + torch.tensor([0, self.radius-1, self.radius-1], device=device)
 
             pair_indices = torch.hstack((torch.zeros(self.rays_to_sample, 1, device=device), torch.randint(-self.radius, self.radius, (self.rays_to_sample, 2), device=device)))
             pair_indices = pair_indices + indices
@@ -394,8 +398,43 @@ class KNNPixelSampler():  # pylint: disable=too-few-public-methods
         self.k = k
         self.radius = radius
 
-    def sample(image_batch, indicies, key="depth"):
+    def sample(self, image_batch, indices, key="depth", device: Union[torch.device, str] = "cpu"):
         """Sample an image batch and return the knn for the given indicies.
         """
 
         assert key in image_batch, f"key {key} not in image_batch"
+
+        # Indices shape is 4096 x 3
+        original_indices = indices.clone()
+        num_rows = indices.shape[0]//(self.radius**2)
+        random_indices = torch.randperm(indices.shape[0])[:num_rows]
+        indices = indices[random_indices]
+        original_indices = original_indices[random_indices]
+        indices = indices.view(indices.shape[0], 1, 1, 3).broadcast_to(indices.shape[0], self.radius, self.radius, 3).clone()
+
+        yys, xxs = torch.meshgrid(
+                torch.arange(-(self.radius//2), (self.radius+1)//2, device=device), torch.arange(-(self.radius//2), (self.radius+1)//2, device=device)
+            )
+        indices[:, ..., 1] += yys.long()
+        indices[:, ..., 2] += xxs.long()
+
+        indices = indices.flatten(0, 2)[..., None]
+
+        i, x, y = indices.unbind(1)
+        patch_depth = image_batch[key].squeeze()[i, x, y]
+        #patch_depth shape is 113 x 36
+        patch_depth = patch_depth.view(-1, self.radius**2)
+
+        i, x, y = original_indices.unbind(1)
+        original_depth = image_batch[key][i, x, y]
+
+        dist = torch.abs(patch_depth - original_depth)
+        _, smallest_k_indicies = torch.topk(dist, self.k, dim=1, largest=False, sorted=True)
+        # flattened_tensor = patch_depth.view(-1)
+        # flattened_indices = smallest_k_indicies.view(-1)
+
+        # nearest_neighbors = torch.gather(flattened_tensor, 0, flattened_indices)
+        # nearest_neighbors = nearest_neighbors.view(smallest_k_indicies.shape)
+
+        return original_indices, smallest_k_indicies
+

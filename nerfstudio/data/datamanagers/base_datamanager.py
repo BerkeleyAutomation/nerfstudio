@@ -331,7 +331,7 @@ class VanillaDataManagerConfig(DataManagerConfig):
     """The scale factor for scaling spatial data such as images, mask, semantics
     along with relevant information about camera intrinsics
     """
-    patch_size: int = 2
+    patch_size: int = 6
     """Size of patch to sample from. If >1, patch-based sampling will be used."""
 
 
@@ -422,8 +422,8 @@ class VanillaDataManager(DataManager, Generic[TDataset]):
     def _get_pixel_sampler(self, dataset: TDataset, *args: Any, **kwargs: Any) -> PixelSampler:
         """Infer pixel sampler to use."""
         if self.config.patch_size > 1:
-            return PatchPixelSampler(*args, **kwargs, patch_size=self.config.patch_size)
-            # return PairPixelSampler(*args, **kwargs, radius=self.config.patch_size)
+            # return PatchPixelSampler(*args, **kwargs, patch_size=self.config.patch_size)
+            return PairPixelSampler(*args, **kwargs, radius=self.config.patch_size)
 
         # If all images are equirectangular, use equirectangular pixel sampler
         is_equirectangular = dataset.cameras.camera_type == CameraType.EQUIRECTANGULAR.value
