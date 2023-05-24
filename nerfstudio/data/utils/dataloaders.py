@@ -57,7 +57,7 @@ class CacheDataloader(DataLoader):
     def __init__(
         self,
         dataset: Dataset,
-        scene_name: str,
+        data_path: Path,
         train: bool,
         num_images_to_sample_from: int = -1,
         num_times_to_repeat_images: int = -1,
@@ -79,6 +79,8 @@ class CacheDataloader(DataLoader):
         self.num_repeated = self.num_times_to_repeat_images  # starting value
         self.first_time = True
         self.train = train
+        self.data_path = data_path
+        scene_name = self.data_path.name
 
         depths_cache_dir = f"outputs/{scene_name}"
         self.depth_batch = self._gen_depth_batch(depths_cache_dir)
@@ -137,7 +139,13 @@ class CacheDataloader(DataLoader):
         train = "train" if self.train else "val"
 
         depth_dir = Path(osp.join(cache_dir, f"{train}_{model_type}.npy"))
-        if depth_dir.exists():
+        depth_data_dir = Path(osp.join(self.data_path, f"{train}_{model_type}.npy"))
+        if depth_data_dir.exists():
+            CONSOLE.print(f"Loading {depth_data_dir}")
+            depth_batch = np.load(depth_data_dir)
+            depth_batch = [torch.as_tensor(depth).to(self.device) for depth in depth_batch]
+            return depth_batch
+        elif depth_dir.exists():
             CONSOLE.print(f"Loading {depth_dir}")
             depth_batch = np.load(depth_dir)
             depth_batch = [torch.as_tensor(depth).to(self.device) for depth in depth_batch]

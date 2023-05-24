@@ -440,7 +440,7 @@ class VanillaDataManager(DataManager, Generic[TDataset]):
         CONSOLE.print("Setting up training dataset...")
         self.train_image_dataloader = CacheDataloader(
             self.train_dataset,
-            self.config.dataparser.data.name,
+            data_path=self.config.dataparser.data,
             train=True,
             num_images_to_sample_from=self.config.train_num_images_to_sample_from,
             num_times_to_repeat_images=self.config.train_num_times_to_repeat_images,
@@ -465,7 +465,7 @@ class VanillaDataManager(DataManager, Generic[TDataset]):
         CONSOLE.print("Setting up evaluation dataset...")
         self.eval_image_dataloader = CacheDataloader(
             self.eval_dataset,
-            self.config.dataparser.data.name,
+            data_path=self.config.dataparser.data,
             train=False,
             num_images_to_sample_from=self.config.eval_num_images_to_sample_from,
             num_times_to_repeat_images=self.config.eval_num_times_to_repeat_images,
