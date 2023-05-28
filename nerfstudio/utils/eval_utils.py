@@ -89,6 +89,8 @@ def eval_setup(
 
     if eval_num_rays_per_chunk:
         config.pipeline.model.eval_num_rays_per_chunk = eval_num_rays_per_chunk
+    
+    config.pipeline.datamanager.patch_size = 1
 
     # load checkpoints from wherever they were saved
     # TODO: expose the ability to choose an arbitrary checkpoint
