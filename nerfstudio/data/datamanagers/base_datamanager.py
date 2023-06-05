@@ -385,7 +385,7 @@ class VanillaDataManager(DataManager, Generic[TDataset]):
         self.train_dataparser_outputs = self.dataparser.get_dataparser_outputs(split="train")
 
         self.train_dataset = self.create_train_dataset()
-        self.eval_dataset = self.create_eval_dataset()
+        # self.eval_dataset = self.create_eval_dataset()
 
         if self.train_dataparser_outputs is not None:
             cameras = self.train_dataparser_outputs.cameras
