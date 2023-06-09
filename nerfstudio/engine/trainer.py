@@ -154,7 +154,7 @@ class Trainer:
         # set up viewer if enabled
         viewer_log_path = self.base_dir / self.config.viewer.relative_log_filename
         self.viewer_state, banner_messages = None, None
-        if self.config.is_viewer_enabled() and self.local_rank == 0:
+        if self.config.is_viewer_enabled():
             datapath = self.config.data
             if datapath is None:
                 datapath = self.base_dir
